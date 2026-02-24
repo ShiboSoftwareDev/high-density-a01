@@ -1,0 +1,17 @@
+{
+  "name": "high-densitya01",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "@tscircuit/solver-utils": "^0.0.15",
+    "@types/bun": "latest",
+    "bun-match-svg": "^0.0.15",
+    "react-cosmos": "^7.1.1",
+    "react-cosmos-plugin-vite": "^7.1.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
