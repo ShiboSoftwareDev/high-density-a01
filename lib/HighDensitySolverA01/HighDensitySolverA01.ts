@@ -16,6 +16,8 @@ interface HighDensitySolverA01Props {
   nodeWithPortPoints: NodeWithPortPoints
   cellSizeMm: number
   viaDiameter: number
+  traceThickness?: number
+  traceMargin?: number
   hyperParameters?: Partial<HyperParameters>
   initialPenaltyFn?: (params: {
     x: number
@@ -53,6 +55,8 @@ export class HighDensitySolverA01 extends BaseSolver {
   nodeWithPortPoints: NodeWithPortPoints
   cellSizeMm: number
   viaDiameter: number
+  traceThickness: number
+  traceMargin: number
   hyperParameters: HyperParameters
   initialPenaltyFn?: HighDensitySolverA01Props["initialPenaltyFn"]
 
@@ -61,6 +65,11 @@ export class HighDensitySolverA01 extends BaseSolver {
   cols!: number
   layers!: number
   gridOrigin!: { x: number; y: number }
+
+  // Z-layer mapping: actual z value <-> layer index
+  availableZ!: number[]
+  zToLayer!: Map<number, number>
+  layerToZ!: Map<number, number>
 
   // Penalty map: [row][col] -> additional traversal cost
   penaltyMap!: number[][]
@@ -82,6 +91,8 @@ export class HighDensitySolverA01 extends BaseSolver {
     this.nodeWithPortPoints = props.nodeWithPortPoints
     this.cellSizeMm = props.cellSizeMm
     this.viaDiameter = props.viaDiameter
+    this.traceThickness = props.traceThickness ?? 0.1
+    this.traceMargin = props.traceMargin ?? 0.15
     this.hyperParameters = {
       shuffleSeed: 0,
       ripCost: 10,
@@ -96,11 +107,22 @@ export class HighDensitySolverA01 extends BaseSolver {
   override _setup(): void {
     const { nodeWithPortPoints, cellSizeMm } = this
     const { width, height, center } = nodeWithPortPoints
-    const availableZ = nodeWithPortPoints.availableZ ?? [0, 1]
+    // Derive available z layers from port points if not provided
+    this.availableZ = nodeWithPortPoints.availableZ ?? [
+      ...new Set(nodeWithPortPoints.portPoints.map((pp) => pp.z)),
+    ].sort((a, b) => a - b)
+
+    this.zToLayer = new Map()
+    this.layerToZ = new Map()
+    for (let i = 0; i < this.availableZ.length; i++) {
+      const z = this.availableZ[i]!
+      this.zToLayer.set(z, i)
+      this.layerToZ.set(i, z)
+    }
 
     this.rows = Math.ceil(height / cellSizeMm)
     this.cols = Math.ceil(width / cellSizeMm)
-    this.layers = availableZ.length
+    this.layers = this.availableZ.length
     this.gridOrigin = {
       x: center.x - width / 2,
       y: center.y - height / 2,
@@ -223,6 +245,8 @@ export class HighDensitySolverA01 extends BaseSolver {
   }
 
   override visualize() {
+    const LAYER_COLORS = ["red", "blue", "orange", "green"]
+
     const points: Array<{
       x: number
       y: number
@@ -250,24 +274,49 @@ export class HighDensitySolverA01 extends BaseSolver {
       stroke: "gray",
     })
 
-    // Draw port points
+    // Draw port points colored by layer
     for (const pp of this.nodeWithPortPoints.portPoints) {
       points.push({
         x: pp.x,
         y: pp.y,
-        color: "red",
+        color: LAYER_COLORS[pp.z] ?? "gray",
         label: pp.connectionName,
       })
     }
 
-    // Draw solved routes
+    // Draw solved routes, splitting segments by z-layer for correct coloring
     if (this.solvedConnectionsMap) {
       for (const [, route] of this.solvedConnectionsMap) {
-        if (route.route.length > 1) {
+        if (route.route.length < 2) continue
+
+        // Split the route into segments of contiguous z values
+        let segStart = 0
+        for (let i = 1; i < route.route.length; i++) {
+          const prev = route.route[i - 1]!
+          const curr = route.route[i]!
+          if (curr.z !== prev.z) {
+            // Emit segment for the previous z
+            if (i - segStart >= 2) {
+              lines.push({
+                points: route.route
+                  .slice(segStart, i)
+                  .map((p) => ({ x: p.x, y: p.y })),
+                strokeColor: LAYER_COLORS[prev.z] ?? "gray",
+                strokeWidth: this.traceThickness,
+              })
+            }
+            segStart = i
+          }
+        }
+        // Emit final segment
+        if (route.route.length - segStart >= 2) {
+          const lastZ = route.route[segStart]!.z
           lines.push({
-            points: route.route.map((p) => ({ x: p.x, y: p.y })),
-            strokeColor: "green",
-            strokeWidth: route.traceThickness,
+            points: route.route
+              .slice(segStart)
+              .map((p) => ({ x: p.x, y: p.y })),
+            strokeColor: LAYER_COLORS[lastZ] ?? "gray",
+            strokeWidth: this.traceThickness,
           })
         }
       }
@@ -332,10 +381,11 @@ export class HighDensitySolverA01 extends BaseSolver {
     const row = Math.round(
       (pt.y - this.gridOrigin.y) / this.cellSizeMm - 0.5,
     )
+    const layerIndex = this.zToLayer.get(pt.z) ?? 0
     return {
       row: Math.max(0, Math.min(this.rows - 1, row)),
       col: Math.max(0, Math.min(this.cols - 1, col)),
-      z: pt.z,
+      z: layerIndex,
       x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
       y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
     }
@@ -470,19 +520,27 @@ export class HighDensitySolverA01 extends BaseSolver {
       this.ripTrace(rippedName)
     }
 
-    // Mark cells as used
+    // Mark cells as used (including margin cells around the trace)
+    const marginCells = Math.ceil(this.traceMargin / this.cellSizeMm)
     for (const pt of routePoints) {
-      const row = Math.round(
+      const centerRow = Math.round(
         (pt.y - this.gridOrigin.y) / this.cellSizeMm - 0.5,
       )
-      const col = Math.round(
+      const centerCol = Math.round(
         (pt.x - this.gridOrigin.x) / this.cellSizeMm - 0.5,
       )
-      const layer = this.usedCells[pt.z]
-      if (layer) {
-        const rowArr = layer[row]
-        if (rowArr) {
-          rowArr[col] = connName
+      for (let dr = -marginCells; dr <= marginCells; dr++) {
+        for (let dc = -marginCells; dc <= marginCells; dc++) {
+          const r = centerRow + dr
+          const c = centerCol + dc
+          if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) continue
+          const layer = this.usedCells[pt.z]
+          if (layer) {
+            const rowArr = layer[r]
+            if (rowArr) {
+              rowArr[c] = connName
+            }
+          }
         }
       }
     }
@@ -516,12 +574,16 @@ export class HighDensitySolverA01 extends BaseSolver {
       }
     }
 
-    // Store solved route
+    // Store solved route (map layer indices back to real z values)
     this.solvedConnectionsMap.set(connName, {
       connectionName: connName,
-      traceThickness: this.cellSizeMm,
+      traceThickness: this.traceThickness,
       viaDiameter: this.viaDiameter,
-      route: routePoints,
+      route: routePoints.map((pt) => ({
+        x: pt.x,
+        y: pt.y,
+        z: this.layerToZ.get(pt.z) ?? pt.z,
+      })),
       vias,
     })
   }
