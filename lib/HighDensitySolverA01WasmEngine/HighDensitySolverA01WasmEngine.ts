@@ -7,6 +7,11 @@ import init, {
 } from "../../wasm/pkg/highdensity_solver_a01_wasm"
 
 import type { HighDensityIntraNodeRoute, NodeWithPortPoints } from "../types"
+import {
+  type AffineTransform,
+  computeGridToAffineTransform,
+  applyAffineTransformToPoint,
+} from "../gridToAffineTransform"
 
 type HyperParameters = {
   shuffleSeed: number
@@ -119,6 +124,7 @@ function computePenaltyMap(
 export class HighDensitySolverA01WasmEngine extends BaseSolver {
   private props: HighDensitySolverA01WasmEngineProps
   private wasm!: HighDensitySolverA01Wasm
+  private gridToBoundsTransform!: AffineTransform
 
   constructor(props: HighDensitySolverA01WasmEngineProps) {
     super()
@@ -129,6 +135,22 @@ export class HighDensitySolverA01WasmEngine extends BaseSolver {
   override _setup(): void {
     // IMPORTANT: call `await initHighDensitySolverWasm()` before using this solver.
     const penaltyMap = computePenaltyMap(this.props)
+
+    const { width, height, center } = this.props.nodeWithPortPoints
+    const originX = center.x - width / 2
+    const originY = center.y - height / 2
+    const rows = Math.floor(height / this.props.cellSizeMm)
+    const cols = Math.floor(width / this.props.cellSizeMm)
+
+    this.gridToBoundsTransform = computeGridToAffineTransform({
+      originX,
+      originY,
+      rows,
+      cols,
+      cellSizeMm: this.props.cellSizeMm,
+      width,
+      height,
+    })
 
     this.wasm = new HighDensitySolverA01Wasm({
       nodeWithPortPoints: this.props.nodeWithPortPoints,
@@ -156,7 +178,19 @@ export class HighDensitySolverA01WasmEngine extends BaseSolver {
   }
 
   override getOutput(): HighDensityIntraNodeRoute[] {
-    return this.wasm.get_output() as unknown as HighDensityIntraNodeRoute[]
+    const routes = this.wasm.get_output() as unknown as HighDensityIntraNodeRoute[]
+    const t = this.gridToBoundsTransform
+    for (const route of routes) {
+      for (let i = 0; i < route.route.length; i++) {
+        const pt = route.route[i]!
+        const tp = applyAffineTransformToPoint(t, pt)
+        route.route[i] = { x: tp.x, y: tp.y, z: pt.z }
+      }
+      for (let i = 0; i < route.vias.length; i++) {
+        route.vias[i] = applyAffineTransformToPoint(t, route.vias[i]!)
+      }
+    }
+    return routes
   }
 
   override visualize(): GraphicsObject {

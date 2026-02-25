@@ -1,5 +1,10 @@
 import { BaseSolver } from "@tscircuit/solver-utils"
 import type { HighDensityIntraNodeRoute, NodeWithPortPoints } from "../types"
+import {
+  type AffineTransform,
+  computeGridToAffineTransform,
+  applyAffineTransformToPoint,
+} from "../gridToAffineTransform"
 
 type ConnectionName = string
 type CellKey = string
@@ -71,6 +76,7 @@ export class HighDensitySolverA01 extends BaseSolver {
   cols!: number
   layers!: number
   gridOrigin!: { x: number; y: number }
+  gridToBoundsTransform!: AffineTransform
 
   // Z-layer mapping: actual z value <-> layer index
   availableZ!: number[]
@@ -142,6 +148,16 @@ export class HighDensitySolverA01 extends BaseSolver {
       x: center.x - width / 2,
       y: center.y - height / 2,
     }
+
+    this.gridToBoundsTransform = computeGridToAffineTransform({
+      originX: this.gridOrigin.x,
+      originY: this.gridOrigin.y,
+      rows: this.rows,
+      cols: this.cols,
+      cellSizeMm,
+      width,
+      height,
+    })
 
     // Initialize penalty map
     this.penaltyMap = Array.from({ length: this.rows }, (_, row) =>
@@ -314,6 +330,7 @@ export class HighDensitySolverA01 extends BaseSolver {
     })
 
     // Draw penalty map as transparent rects
+    const vt = this.gridToBoundsTransform
     if (this.showPenaltyMap && this.penaltyMap) {
       let maxPenalty = 0
       for (let row = 0; row < this.rows; row++) {
@@ -328,13 +345,14 @@ export class HighDensitySolverA01 extends BaseSolver {
             const p = this.penaltyMap[row]?.[col] ?? 0
             if (p <= 0) continue
             const alpha = Math.min(0.6, (p / maxPenalty) * 0.6)
+            const tc = applyAffineTransformToPoint(vt, {
+              x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
+              y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
+            })
             rects.push({
-              center: {
-                x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
-                y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
-              },
-              width: this.cellSizeMm,
-              height: this.cellSizeMm,
+              center: tc,
+              width: this.cellSizeMm * vt.a,
+              height: this.cellSizeMm * vt.e,
               fill: `rgba(255,165,0,${alpha.toFixed(3)})`,
             })
           }
@@ -349,13 +367,14 @@ export class HighDensitySolverA01 extends BaseSolver {
           for (let col = 0; col < this.cols; col++) {
             const occupant = this.usedCells[z]?.[row]?.[col]
             if (!occupant) continue
+            const tc = applyAffineTransformToPoint(vt, {
+              x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
+              y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
+            })
             rects.push({
-              center: {
-                x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
-                y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
-              },
-              width: this.cellSizeMm,
-              height: this.cellSizeMm,
+              center: tc,
+              width: this.cellSizeMm * vt.a,
+              height: this.cellSizeMm * vt.e,
               fill: "rgba(0,0,255,0.5)",
             })
           }
@@ -373,61 +392,59 @@ export class HighDensitySolverA01 extends BaseSolver {
       })
     }
 
-    // Draw solved routes, splitting segments by z-layer for correct coloring
+    // Draw solved routes (with grid-to-bounds transform applied),
+    // splitting segments by z-layer for correct coloring
     const TRACE_COLORS = [
       "rgba(255,0,0,0.75)",
       "rgba(0,0,255,0.75)",
       "rgba(255,165,0,0.75)",
       "rgba(0,128,0,0.75)",
     ]
-    if (this.solvedConnectionsMap) {
-      for (const [, route] of this.solvedConnectionsMap) {
-        if (route.route.length < 2) continue
+    const transformedRoutes = this.getOutput()
+    for (const route of transformedRoutes) {
+      if (route.route.length < 2) continue
 
-        // Split the route into segments of contiguous z values
-        let segStart = 0
-        for (let i = 1; i < route.route.length; i++) {
-          const prev = route.route[i - 1]!
-          const curr = route.route[i]!
-          if (curr.z !== prev.z) {
-            // Emit segment for the previous z
-            if (i - segStart >= 2) {
-              lines.push({
-                points: route.route
-                  .slice(segStart, i)
-                  .map((p) => ({ x: p.x, y: p.y })),
-                strokeColor: TRACE_COLORS[prev.z] ?? "rgba(128,128,128,0.75)",
-                strokeWidth: this.traceThickness,
-              })
-            }
-            segStart = i
+      // Split the route into segments of contiguous z values
+      let segStart = 0
+      for (let i = 1; i < route.route.length; i++) {
+        const prev = route.route[i - 1]!
+        const curr = route.route[i]!
+        if (curr.z !== prev.z) {
+          // Emit segment for the previous z
+          if (i - segStart >= 2) {
+            lines.push({
+              points: route.route
+                .slice(segStart, i)
+                .map((p) => ({ x: p.x, y: p.y })),
+              strokeColor: TRACE_COLORS[prev.z] ?? "rgba(128,128,128,0.75)",
+              strokeWidth: this.traceThickness,
+            })
           }
+          segStart = i
         }
-        // Emit final segment
-        if (route.route.length - segStart >= 2) {
-          const lastZ = route.route[segStart]!.z
-          lines.push({
-            points: route.route
-              .slice(segStart)
-              .map((p) => ({ x: p.x, y: p.y })),
-            strokeColor: TRACE_COLORS[lastZ] ?? "rgba(128,128,128,0.75)",
-            strokeWidth: this.traceThickness,
-          })
-        }
+      }
+      // Emit final segment
+      if (route.route.length - segStart >= 2) {
+        const lastZ = route.route[segStart]!.z
+        lines.push({
+          points: route.route
+            .slice(segStart)
+            .map((p) => ({ x: p.x, y: p.y })),
+          strokeColor: TRACE_COLORS[lastZ] ?? "rgba(128,128,128,0.75)",
+          strokeWidth: this.traceThickness,
+        })
       }
     }
 
     // Draw vias
-    if (this.solvedConnectionsMap) {
-      for (const [, route] of this.solvedConnectionsMap) {
-        for (const via of route.vias) {
-          circles.push({
-            center: { x: via.x, y: via.y },
-            radius: this.viaDiameter / 2,
-            fill: "rgba(0,0,0,0.3)",
-            stroke: "black",
-          })
-        }
+    for (const route of transformedRoutes) {
+      for (const via of route.vias) {
+        circles.push({
+          center: { x: via.x, y: via.y },
+          radius: this.viaDiameter / 2,
+          fill: "rgba(0,0,0,0.3)",
+          stroke: "black",
+        })
       }
     }
 
@@ -437,9 +454,13 @@ export class HighDensitySolverA01 extends BaseSolver {
         const parts = key.split(",")
         const row = Number(parts[1])
         const col = Number(parts[2])
-        points.push({
+        const tc = applyAffineTransformToPoint(vt, {
           x: this.gridOrigin.x + (col + 0.5) * this.cellSizeMm,
           y: this.gridOrigin.y + (row + 0.5) * this.cellSizeMm,
+        })
+        points.push({
+          x: tc.x,
+          y: tc.y,
           color: "rgba(0,0,255,0.2)",
         })
       }
@@ -742,7 +763,8 @@ export class HighDensitySolverA01 extends BaseSolver {
       this.ripTrace(displaced)
     }
 
-    // Store solved route (map layer indices back to real z values)
+    // Store solved route with raw grid coordinates and real z values.
+    // The grid-to-bounds transform is applied later in getOutput().
     this.solvedConnectionsMap.set(connName, {
       connectionName: connName,
       traceThickness: this.traceThickness,
@@ -828,6 +850,14 @@ export class HighDensitySolverA01 extends BaseSolver {
   }
 
   override getOutput(): HighDensityIntraNodeRoute[] {
-    return Array.from(this.solvedConnectionsMap.values())
+    const t = this.gridToBoundsTransform
+    return Array.from(this.solvedConnectionsMap.values()).map((route) => ({
+      ...route,
+      route: route.route.map((pt) => {
+        const tp = applyAffineTransformToPoint(t, pt)
+        return { x: tp.x, y: tp.y, z: pt.z }
+      }),
+      vias: route.vias.map((v) => applyAffineTransformToPoint(t, v)),
+    }))
   }
 }
