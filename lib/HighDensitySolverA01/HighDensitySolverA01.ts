@@ -374,6 +374,12 @@ export class HighDensitySolverA01 extends BaseSolver {
     }
 
     // Draw solved routes, splitting segments by z-layer for correct coloring
+    const TRACE_COLORS = [
+      "rgba(255,0,0,0.75)",
+      "rgba(0,0,255,0.75)",
+      "rgba(255,165,0,0.75)",
+      "rgba(0,128,0,0.75)",
+    ]
     if (this.solvedConnectionsMap) {
       for (const [, route] of this.solvedConnectionsMap) {
         if (route.route.length < 2) continue
@@ -390,7 +396,7 @@ export class HighDensitySolverA01 extends BaseSolver {
                 points: route.route
                   .slice(segStart, i)
                   .map((p) => ({ x: p.x, y: p.y })),
-                strokeColor: LAYER_COLORS[prev.z] ?? "gray",
+                strokeColor: TRACE_COLORS[prev.z] ?? "rgba(128,128,128,0.75)",
                 strokeWidth: this.traceThickness,
               })
             }
@@ -404,7 +410,7 @@ export class HighDensitySolverA01 extends BaseSolver {
             points: route.route
               .slice(segStart)
               .map((p) => ({ x: p.x, y: p.y })),
-            strokeColor: LAYER_COLORS[lastZ] ?? "gray",
+            strokeColor: TRACE_COLORS[lastZ] ?? "rgba(128,128,128,0.75)",
             strokeWidth: this.traceThickness,
           })
         }
