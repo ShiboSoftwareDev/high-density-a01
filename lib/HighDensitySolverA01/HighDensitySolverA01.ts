@@ -55,7 +55,6 @@ interface Connection {
 }
 
 export class HighDensitySolverA01 extends BaseSolver {
-  override MAX_ITERATIONS = 500e3
   nodeWithPortPoints: NodeWithPortPoints
   cellSizeMm: number
   viaDiameter: number
@@ -114,6 +113,7 @@ export class HighDensitySolverA01 extends BaseSolver {
       viaBaseCost: 0.1,
       ...props.hyperParameters,
     }
+    this.MAX_ITERATIONS = 1e6
     this.initialPenaltyFn = props.initialPenaltyFn
   }
 

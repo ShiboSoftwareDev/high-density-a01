@@ -60,22 +60,31 @@ export async function initHighDensitySolverWasm(
     }
 
     // Node/Bun: read .wasm from disk and use initSync
-    if (typeof globalThis.process !== "undefined" && globalThis.process.versions) {
+    if (
+      typeof globalThis.process !== "undefined" &&
+      globalThis.process.versions
+    ) {
       const { readFileSync, existsSync } = await import("fs")
       const { resolve, dirname } = await import("path")
       const { fileURLToPath } = await import("url")
       const dir = dirname(fileURLToPath(import.meta.url))
       // Built dist/ has the .wasm copied alongside; source tree has it under wasm/pkg/
       const distPath = resolve(dir, "highdensity_solver_a01_wasm_bg.wasm")
-      const srcPath = resolve(dir, "../../wasm/pkg/highdensity_solver_a01_wasm_bg.wasm")
+      const srcPath = resolve(
+        dir,
+        "../../wasm/pkg/highdensity_solver_a01_wasm_bg.wasm",
+      )
       const wasmPath = existsSync(distPath) ? distPath : srcPath
       const wasmBytes = readFileSync(wasmPath)
       initSync({ module: wasmBytes })
       return
     }
 
-    // Browser: fetch from jsdelivr
-    const cdnUrl = `https://cdn.jsdelivr.net/npm/@tscircuit/high-density-a01@${packageJson.version}/dist/highdensity_solver_a01_wasm_bg.wasm`
+    // Browser: use env override or fetch from jsdelivr
+    const cdnUrl =
+      (typeof import.meta !== "undefined" &&
+        (import.meta as any).env?.VITE_TSCIRCUIT_HIGH_DENSITY_A01_WASM_URL) ||
+      `https://cdn.jsdelivr.net/npm/@tscircuit/high-density-a01@${packageJson.version}/dist/highdensity_solver_a01_wasm_bg.wasm`
     await init(cdnUrl)
   })()
 
@@ -114,6 +123,7 @@ export class HighDensitySolverA01WasmEngine extends BaseSolver {
   constructor(props: HighDensitySolverA01WasmEngineProps) {
     super()
     this.props = props
+    this.MAX_ITERATIONS = 1e6
   }
 
   override _setup(): void {
@@ -211,9 +221,7 @@ export class HighDensitySolverA01WasmEngine extends BaseSolver {
       if (route.route.length - segStart >= 2) {
         const lastZ = route.route[segStart]!.z
         lines!.push({
-          points: route.route
-            .slice(segStart)
-            .map((p) => ({ x: p.x, y: p.y })),
+          points: route.route.slice(segStart).map((p) => ({ x: p.x, y: p.y })),
           strokeColor: TRACE_COLORS[lastZ] ?? "rgba(128,128,128,0.75)",
           strokeWidth: traceThickness,
         })

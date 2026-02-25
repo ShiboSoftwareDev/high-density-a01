@@ -23,7 +23,6 @@ export default () => {
           cellSizeMm: 0.5,
           viaDiameter: 0.3,
         })
-        solver.MAX_ITERATIONS = 200_000
         return solver
       }}
     />
