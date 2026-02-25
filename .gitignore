@@ -38,3 +38,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 cosmos-export
 .vercel
+
+# wasm build artifacts
+wasm/target
+wasm/pkg
