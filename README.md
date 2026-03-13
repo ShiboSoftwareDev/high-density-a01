@@ -67,3 +67,10 @@ the used cells to the `usedCell` structure. Note that vias occupy more cells
 based on the `viaDiameter`. We then see if we needed to rip any traces. When we
 rip a trace, we remove it from the `usedCell` structure, remove it from the
 `solvedConnections` list and add it back to the `unsolvedConnections` queue.
+
+## high-density-a02
+
+The high-density-a02 solver is a variant that uses an inner and outer grid to reduce the number of cells
+while still allowing high density edges
+
+![a02](https://private-user-images.githubusercontent.com/1910070/563350353-45e8fbc3-a666-4927-a200-8bac665c2ee1.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzM0NDQ0ODMsIm5iZiI6MTc3MzQ0NDE4MywicGF0aCI6Ii8xOTEwMDcwLzU2MzM1MDM1My00NWU4ZmJjMy1hNjY2LTQ5MjctYTIwMC04YmFjNjY1YzJlZTEucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDMxMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAzMTNUMjMyMzAzWiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YzQwMmI4MzhjZTA0YzZhNDhmZmZhMTNlNDYwNTU4ODI2NDAxM2ZhYjgyNDk2MmY4NTAwYjQ1NjY5Y2MwMzczNCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.EcpBaVzRhqRLgmRwX50ekIZ6_O9PD427VvrwnYV4sVY)
