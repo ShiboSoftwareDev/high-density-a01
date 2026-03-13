@@ -123,9 +123,6 @@
         "rootConnectionName": "source_net_29"
       }
     ],
-    "availableZ": [
-      0,
-      1
-    ]
+    "availableZ": [0, 1]
   }
 }
