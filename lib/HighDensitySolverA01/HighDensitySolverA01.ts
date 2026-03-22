@@ -452,7 +452,6 @@ export class HighDensitySolverA01 extends BaseSolver {
         this.portOwnerFlat[flatIdx] = -2
       }
     }
-
     this.solvedRoutes = new Map()
     this.usedIndicesByConn = []
     this.usedDiagIndicesByConn = []
@@ -834,6 +833,19 @@ export class HighDensitySolverA01 extends BaseSolver {
     }
   }
 
+  private shouldSkipFixedPortHalo(flatIdx: number, connId: ConnId) {
+    const fixedOwner = this.portOwnerFlat[flatIdx]!
+    if (fixedOwner === connId) return false
+    if (fixedOwner === -2) return true
+    if (fixedOwner < 0) return false
+    const sameRoot =
+      this.connIdToRootNet[fixedOwner] === this.connIdToRootNet[connId]
+    return !(
+      sameRoot &&
+      this.overlapFriendlyRootNets.has(this.connIdToRootNet[connId]!)
+    )
+  }
+
   // --- Visited stamp management ---
   private nextStamp(): void {
     this.stamp = (this.stamp + 1) >>> 0
@@ -1062,6 +1074,12 @@ export class HighDensitySolverA01 extends BaseSolver {
           const c = cell.col + dc
           if (r < 0 || r >= rows || c < 0 || c >= cols) continue
           const flatIdx = (cell.z * rows + r) * cols + c
+          if (
+            (r !== cell.row || c !== cell.col) &&
+            this.shouldSkipFixedPortHalo(flatIdx, connId)
+          ) {
+            continue
+          }
           const existing = used[flatIdx]!
           const sameRoot =
             this.connIdToRootNet[existing] === this.connIdToRootNet[connId]
@@ -1092,6 +1110,12 @@ export class HighDensitySolverA01 extends BaseSolver {
           const c = via.col + offDc[oi]!
           if (r < 0 || r >= rows || c < 0 || c >= cols) continue
           const flatIdx = zBase + r * cols + c
+          if (
+            (r !== via.row || c !== via.col) &&
+            this.shouldSkipFixedPortHalo(flatIdx, connId)
+          ) {
+            continue
+          }
           const existing = used[flatIdx]!
           const sameRoot =
             this.connIdToRootNet[existing] === this.connIdToRootNet[connId]
