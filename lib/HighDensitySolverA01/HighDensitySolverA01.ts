@@ -293,6 +293,25 @@ export class HighDensitySolverA01 extends BaseSolver {
     this.initialPenaltyFn = props.initialPenaltyFn
   }
 
+  override getConstructorParams(): [HighDensitySolverA01Props] {
+    return [
+      {
+        nodeWithPortPoints: this.nodeWithPortPoints,
+        cellSizeMm: this.cellSizeMm,
+        viaDiameter: this.viaDiameter,
+        maxCellCount: this.maxCellCount,
+        stepMultiplier: this.stepMultiplier,
+        traceThickness: this.traceThickness,
+        traceMargin: this.traceMargin,
+        viaMinDistFromBorder: this.viaMinDistFromBorder,
+        showPenaltyMap: this.showPenaltyMap,
+        showUsedCellMap: this.showUsedCellMap,
+        hyperParameters: this.hyperParameters,
+        initialPenaltyFn: this.initialPenaltyFn,
+      },
+    ]
+  }
+
   override _setup(): void {
     const { nodeWithPortPoints, cellSizeMm } = this
     const { width, height, center } = nodeWithPortPoints
